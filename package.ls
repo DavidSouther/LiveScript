@@ -1,7 +1,7 @@
-name    : \LiveScript
+name    : \dslivescript
 version : \1.1.0-DS
 
-description : 'LiveScript is a language which compiles to JavaScript. It has a straightforward mapping to JavaScript and allows you to write expressive code devoid of repetitive boilerplate. While LiveScript adds many features to assist in functional style programming, it also has many improvements for object oriented and imperative programming.'
+description : 'LiveScript is a language which compiles to JavaScript. It has a straightforward mapping to JavaScript and allows you to write expressive code devoid of repetitive boilerplate. While LiveScript adds many features to assist in functional style programming, it also has many improvements for object oriented and imperative programming. DS LiveScript adds eventing operations, making observers first-class objects in the language.'
 
 keywords    :
   \language
@@ -10,9 +10,9 @@ keywords    :
   \coco
   \javascript
 
-author   : 'George Zahariev <z@georgezahariev.com>'
+author   : 'David Souther <davidsouther@gmail.com>'
 homepage : 'http://livescript.net'
-bugs     : \https://github.com/gkz/LiveScript/issues
+bugs     : \https://github.com/DavidSouther/LiveScript/issues
 licenses :
   type: \MIT, url: \https://raw.github.com/gkz/LiveScript/master/LICENSE
   ...
@@ -27,15 +27,7 @@ files       :
   \README.md
   \LICENSE
 
-main : \./lib/livescript
-bin  :
-  livescript: \./bin/livescript
-  lsc: \./bin/lsc
-  slake: \./bin/slake
-
-preferGlobal: true
-
-repository: type: \git, url: \git://github.com/gkz/LiveScript.git
+repository: type: \git, url: \git://github.com/DavidSouther/LiveScript.git
 
 dependencies:
   \prelude-ls : '>= 0.6.0'
