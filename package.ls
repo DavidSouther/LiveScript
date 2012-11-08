@@ -26,6 +26,7 @@ files       :
   \bin
   \README.md
   \LICENSE
+main: \./lib/livescript
 
 repository: type: \git, url: \git://github.com/DavidSouther/LiveScript.git
 
