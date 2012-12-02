@@ -427,7 +427,9 @@ exports import
       then create-it-func!
       else tag = \LOGIC if @last.spaced
     case \/ \% \%%       then tag = \MATH
-    case \+++            then tag = \CONCAT
+    case \+++
+      console?warn "WARNING on line #{ @line }: the `+++` concat operator is deprecated and will be removed in a future LiveScript release. Please use a spaced `++` for concatenation instead."
+      tag = \CONCAT
     case \++ \--         then tag = \CREMENT
     case \<<< \<<<<      then tag = \IMPORT
     case \;              then tag = \NEWLINE; @wantBy = false
@@ -437,7 +439,6 @@ exports import
       @token \LITERAL \.. true
       return 2
     case \.
-      create-it-func! if @last.0 is \(
       @last.0 = \? if @last.1 is \?
       tag = \DOT
     case \,
@@ -515,7 +516,7 @@ exports import
         @token tag, val
         return sym.length
       fallthrough
-    case <[ := += -= *= /= %= %%= <?= >?= **= ^= .&.= .|.= .^.= .<<.= .>>.= .>>>.= ]>
+    case <[ := += -= *= /= %= %%= <?= >?= **= ^= .&.= .|.= .^.= .<<.= .>>.= .>>>.= ++= ]>
       if @last.1 is \. or @last.0 is \? and @adi!
         @last.1 += val
         return val.length
@@ -724,7 +725,7 @@ exports import
       else
         continue if i > 1 and not t.1
         tokens.push [\STRNUM; nlines @string \" t.1; t.2]
-      tokens.push joint +++ tokens[*-1]2
+      tokens.push joint ++ tokens[*-1]2
     --tokens.length
     @token right, '', callable
 
@@ -885,23 +886,43 @@ character = if JSON!? then uxxxx else ->
       tokens.splice i, 1 unless tokens[i+2].0 is \DOT
     case val is \. and token.spaced and prev.spaced
       tokens[i] = [\COMPOSE \<< line]
-    case tag is \) and prev.1 is \.
-      tokens.splice i, 0,
-        [\[  \[  line]
-        [\ID \it line]
-        [\]  \]  line]
-      parens = 1
-      :LOOP for j from i to 0 by -1
-        switch tokens[j].0
-        | \) => ++parens
-        | \( =>
-          if --parens is 0
-            tokens.splice j+1, 0,
-              [\PARAM( \(  line]
-              [\ID     \it line]
-              [\)PARAM \)  line]
-              [\->     \-> line]
-            break LOOP
+    case val is \++
+      break unless next = tokens[i+1]
+      ts = <[ ID LITERAL STRNUM ]>
+      if prev.spaced and token.spaced
+      or not (prev.spaced or token.spaced) and prev.0 in ts and next.0 in ts
+        tokens[i].0 = 'CONCAT'
+      if prev.0 is \( and next.0 is \)
+      or prev.0 is \( and token.spaced
+      or next.0 is \) and prev.spaced
+        tokens[i].0 = 'BIOP'
+    case tag is \DOT and val is \.
+      next = tokens[i+1]
+      if prev.0 is \( and next.0 is \)
+        tokens[i].0 = \BIOP
+      else if prev.0 is \(
+        tokens.splice i, 0,
+          * \PARAM( \(  line
+          * \)PARAM \)  line
+          * \->     \-> line
+          * \ID     \it line
+      else if next.0 is \)
+        tokens.splice i+1, 0,
+          [\[  \[  line]
+          [\ID \it line]
+          [\]  \]  line]
+        parens = 1
+        :LOOP for j from i+1 to 0 by -1
+          switch tokens[j].0
+          | \) => ++parens
+          | \( =>
+            if --parens is 0
+              tokens.splice j+1, 0,
+                [\PARAM( \(  line]
+                [\ID     \it line]
+                [\)PARAM \)  line]
+                [\->     \-> line]
+              break LOOP
     prev = token
     continue
 
@@ -1172,7 +1193,7 @@ KEYWORDS_SHARED = <[
 KEYWORDS_UNUSED =
   <[ enum interface package private protected public static yield ]>
 
-KEYWORDS = KEYWORDS_SHARED +++ KEYWORDS_UNUSED
+KEYWORDS = KEYWORDS_SHARED ++ KEYWORDS_UNUSED
 
 ##### Regexes
 # Some of these are given `g` flag and made sure to match empty string
@@ -1183,7 +1204,7 @@ ID = //
 |//ig
 SYMBOL = //
   <: | -?[:\?]>                 # Event operators
-| [-+*/^]= | %%?= | ::?=        # compound assign
+| [-/^]= | [%+:*]{1,2}=         # compound assign
 | \.(?:[&\|\^] | << | >>>?)\.=? # bitwise and shifts
 | \.{1,3}                       # dot / cascade / splat/placeholder/yada*3
 | \^\^                          # clone
@@ -1208,7 +1229,7 @@ SYMBOL = //
 | \|>                           # pipe
 | \|                            # case
 | =>                            # then
-| \*\*=? | \^                   # pow
+| \*\* | \^                     # pow
 | `                             # backticks
 | [^\s#]?
 //g
@@ -1254,7 +1275,7 @@ INVERSES = {[o, CLOSERS[i]] for o, i in OPENERS} <<<
 CHAIN = <[ ( { [ ID STRNUM LITERAL LET WITH WORDS ]>
 
 # Tokens that can start an argument list.
-ARG = CHAIN +++ <[ ... UNARY CREMENT PARAM( FUNCTION
+ARG = CHAIN ++ <[ ... UNARY CREMENT PARAM( FUNCTION
                       IF SWITCH TRY CLASS RANGE LABEL DECL DO BIOPBP ]>
 
 # Tokens that expect INDENT on the right.

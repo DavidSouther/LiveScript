@@ -536,6 +536,7 @@ eq void do
   <~! M
   !function C then C
   ok new C instanceof C
+  eq void do not function f => f
   true
 
 eq false !!->
@@ -637,6 +638,9 @@ eq '3,2,,0' "#{ map (?p), [{p: 3}, {p: 2}, , {p: 0}] }"
 
 eq 2 (obj.) \a
 eq 7 ((obj <<< d: 7).) \d
+
+eq 2 (.) obj, \a
+eq 2 ((.) obj) \a
 
 ### partialization
 three-add = (x, y, z) -> x + y + z

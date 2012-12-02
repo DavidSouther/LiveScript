@@ -355,10 +355,6 @@ ok ++a.0
 eq(-- a[0], a[0] ++)
 eq 1 a.0
 
-# ACI applies on postcrement.
-eq a.0 ++  -- a.0
-eq 1 a.0
-
 # Infix after postcrement.
 eq a.0++ *  2, 2
 eq a.0-- /  2, 1
@@ -524,12 +520,15 @@ eq '1,1,1,1' ''+ a[0 ...] * n
 eq '0,1,0,1' ''+ [i for i to 1] * 2
 eq '0,0,0,0' ''+ [i for i to 0] * n
 
+##### ++ concat
 a = [0 1]
 c = [2 3]
 
-##### +++
-eq '0,1,2,3' String a +++ c
-eq '0,1,5'   String a +++ 5
+eq '0,1,2,3' String a ++ c
+eq '0,1,2,3' String a++c
+eq '0,1,5'   String a ++ 5
+eq '0,1,5'   String a++5
+
 
 ### Mod
 eq -3, -3 % 4
@@ -607,9 +606,9 @@ eq 8 (^) 2 3
 eq 8 (2**) 3
 eq 8 (^3) 2
 
-eq '1,2,3' "#{ (+++) [1] [2 3] }"
-eq '1,2,3' "#{ ([1]+++) [2 3]  }"
-eq '1,2,3' "#{ (+++[2 3]) [1]  }"
+eq '1,2,3' "#{ (++) [1] [2 3] }"
+eq '1,2,3' "#{ ([1] ++) [2 3]  }"
+eq '1,2,3' "#{ (++ [2 3]) [1]  }"
 
 eq 2 (>?) 2 1
 eq 2 (2 >?) 1
@@ -693,14 +692,17 @@ eq '4,2' "#{ (/ '') 42 }"
 x = 10
 eq 12 (x +) 2
 
+a = [1 2]
+eq '1,2,3,4' String (++) a, [3 4]
+eq '3,4,1,2' String (++ a) [3 4]
+eq '1,2,3,4' String (a ++) [3 4]
+
 # Unary ops as functions
 ok (not) false
 ok (!).call(null, false)
 
 x = 3
-eq 4 (++) x # does not actually modify x
 eq 2 (--) x
-eq 4 (++).call(null, x)
 
 eq '1,3,5' "#{ filter (not) << even, [1 to 5] }"
 

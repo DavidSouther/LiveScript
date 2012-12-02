@@ -718,11 +718,11 @@ class exports.Call extends Node
 
   @back = (params, node, bound, curried) ->
     fun = Fun params,, bound, curried
-    node.=it if fun.void = node.op is \!
+    node.=it if fun.hushed = node.op is \!
     if node instanceof Label
       fun <<< {name: node.label, +labeled}
       node.=it
-    node.=it if not fun.void and fun.void = node.op is \!
+    node.=it if not fun.hushed and fun.hushed = node.op is \!
     node.getCall!?partialized = null
     {args} = node.getCall! or (node = Chain node .add Call!)getCall!
     index = 0
@@ -748,7 +748,7 @@ class exports.Call extends Node
       then args[i] = Literal \void; a.left
       else Var a.varName! || a.carp 'invalid "let" argument'
     args.unshift Literal \this
-    @block Fun(params, Block lines +++ body.lines), args, \.call
+    @block Fun(params, Block lines ++ body.lines), args, \.call
 
 #### List
 # An abstract node for a list of comma-separated items.
@@ -862,7 +862,7 @@ class exports.Prop extends Node
     if val.getAccessors!
       @val = that
       for fun in that
-        fun.x = if fun.void = fun.params.length then \s else \g
+        fun.x = if fun.hushed = fun.params.length then \s else \g
       import {\accessor}
 
   children: <[ key val ]>
@@ -934,7 +934,7 @@ class exports.Unary extends Node
       switch op
       case \!
         break if flag
-        return it <<< {+void} if it instanceof Fun and not it.void
+        return it <<< {+hushed} if it instanceof Fun and not it.hushed
         return it.invert!
       case \++ \-- then @post = true if flag
       case \new
@@ -1009,9 +1009,6 @@ class exports.Unary extends Node
       return "#{ util \toString }.call(
               #{ it.compile o, LEVEL_LIST }).slice(8, -1)"
     code = it.compile o, LEVEL_OP + PREC.unary
-    unless code
-      console.log it
-      console.log it.prototype
     if @post then code += op else
       op += ' ' if op in <[ new typeof delete ]>
                 or op in <[ + - ]> and op is code.charAt!
@@ -1067,6 +1064,7 @@ class exports.Binary extends Node
       | \<<< \<<<< => return Import first, second, op is \<<<<
       | \<|        => return Block first .pipe second, op
       | \|>        => return Block second .pipe first, \<|
+      | \.         => return Chain first .add Index second
     import {op, first, second}
 
   children: <[ first second ]>
@@ -1112,7 +1110,7 @@ class exports.Binary extends Node
     case \** \^   then return @compilePow o
     case \<? \>?  then return @compileMinMax o
     case \<< \>>  then return @compileCompose o
-    case \+++     then return @compileConcat o
+    case \+++ \++ then return @compileConcat o
     case \%%      then return @compileMod o
     case \xor     then return @compileXor o
     case \&& \||
@@ -1184,7 +1182,7 @@ class exports.Binary extends Node
     If x, lefts.1 .addElse rites.1 .compileExpression o
 
   compileMethod: (o, klass, method, arg) ->
-    args = [@second] +++ (arg || [])
+    args = [@second] ++ (arg || [])
     if @first"is#klass"!
       Chain(@first, [Index Key method; Call args])compile o
     else
@@ -1228,15 +1226,16 @@ class exports.Binary extends Node
 
   compileConcat: (o) ->
     f = (x) ->
-      | x instanceof Binary and x.op is \+++ => (f x.first) +++ (f x.second)
+      | x instanceof Binary and x.op in <[ +++ ++ ]> =>
+        (f x.first) ++ (f x.second)
       | otherwise                            => [x]
     Chain @first .add Index (Key \concat), \., true .add Call(f @second) .compile o
 
   compileCompose: (o) ->
     f = (x) ->
-      | x instanceof Binary and x.op in [\<< \>>] => (f x.first) +++ (f x.second)
+      | x instanceof Binary and x.op in [\<< \>>] => (f x.first) ++ (f x.second)
       | otherwise                                 => [x]
-    args = ([@first] +++ f @second)
+    args = ([@first] ++ f @second)
     args.=reverse! if @op is \>>
     Chain Var (util \compose) .add Call([Arr args]) .compile o
 
@@ -1330,7 +1329,7 @@ class exports.Assign extends Node
     return @compileConditional   o, left if @logic
     {op, right} = this
     return @compileMinMax  o, left, right if op in <[ <?= >?= ]>
-    if op in <[ **= ^= %%= ]>
+    if op in <[ **= ^= %%= ++= ]>
     or op is \*= and right.isString!
     or op in <[ -= /= ]> and right.isMatcher!
       [left, reft] = Chain(left)cacheReference o
@@ -1463,7 +1462,7 @@ class exports.Assign extends Node
 class exports.Import extends Node
   (@left, @right, @all and \All) ~>
     if not all and left instanceof Obj and right.items
-      return Obj left.items +++ right.asObj!items
+      return Obj left.items ++ right.asObj!items
 
   children: <[ left right ]>
 
@@ -1629,7 +1628,7 @@ class exports.Fun extends Node
       pscope.add name, \function, this
     if @statement or name and @labeled
       code += ' ' + scope.add name, \function, this
-    @void or @ctor or body.makeReturn!
+    @hushed or @ctor or body.makeReturn!
     code += "(#{ @compileParams scope }){"
     code += "\n#that\n#tab" if body.compileWithDeclarations o
     code += \}
@@ -1732,10 +1731,11 @@ class exports.Class extends Node
       and node.left.head.value is \this and node.right instanceof Fun
         node.right.stat = node.left.tails.0.key
       else
-        node.traverseChildren !->
+        node.traverseChildren (!->
           if it instanceof Block
             for child, k in it.lines when child instanceof Obj
               it.lines[k] = import-proto-obj child, i
+        ), true
 
     ctor ||= lines.* = if @sup and @sup instanceof [Fun, Var]
                     then  Fun [] Block Chain(new Super).add Call [Splat Literal \arguments]
@@ -1808,7 +1808,7 @@ class exports.Parens extends Node
   compile: (o, level ? o.level) ->
     {it} = this
     it{cond, \void} ||= this
-    it.head.void = true if @calling and (not level or @void)
+    it.head.hushed = true if @calling and (not level or @void)
     unless @keep or @newed or level >= LEVEL_OP + PREC[it.op]
       return (it <<< {@front})compile o, level || LEVEL_PAREN
     if it.isStatement!
@@ -2184,7 +2184,7 @@ class exports.Switch extends Node
     [target-node, target] = Chain @target .cacheReference o if @target
     topic = if @type is \match
       t = if target then [target-node] else []
-      Block (t +++ [Literal \false]) .compile o, LEVEL_PAREN
+      Block (t ++ [Literal \false]) .compile o, LEVEL_PAREN
     else
       !!@topic and @anaphorize!compile o, LEVEL_PAREN
     code  = "switch (#topic) {\n"
@@ -2321,7 +2321,7 @@ class exports.Label extends Node
 
 #### Cascade
 class exports.Cascade extends Node
-  (@input, @output) ->
+  (@input, @output, @implicit) ->
 
   children: <[ input output ]>
 
@@ -2349,7 +2349,7 @@ class exports.Cascade extends Node
     code = input.compile o
     o.ref = new String ref
     out = Block output .compile o
-    o.ref.erred or @carp "unreferred cascadee"
+    @carp "unreferred cascadee" if @implicit and not o.ref.erred
     return "#code#{input.terminator}\n#out" unless level
     code += ", #out"
     if level > LEVEL_PAREN then "(#code)" else code
@@ -2835,14 +2835,14 @@ LEVEL_CALL   = 5  # ...()
 
 # Operator precedances.
 let @ = PREC = {unary: 0.9}
-  @\&& = @\|| = @\xor                                    = 0.2
-  @\.&.  = @\.^.  = @\.|.                                = 0.3
-  @\== = @\!= = @\~= = @\!~= = @\=== = @\!==             = 0.4
-  @\<  = @\>  = @\<=  = @\>= = @of = @instanceof = @\+++ = 0.5
-  @\<<= = @\>>= = @\<== = @\>==                          = 0.5
-  @\.<<. = @\.>>. = @\.>>>.                              = 0.6
-  @\+  = @\-                                             = 0.7
-  @\*  = @\/  = @\%                                      = 0.8
+  @\&& = @\|| = @\xor                             = 0.2
+  @\.&.  = @\.^.  = @\.|.                         = 0.3
+  @\== = @\!= = @\~= = @\!~= = @\=== = @\!==      = 0.4
+  @\<  = @\>  = @\<=  = @\>= = @of = @instanceof  = 0.5
+  @\<<= = @\>>= = @\<== = @\>== = @\+++ = @\++    = 0.5
+  @\.<<. = @\.>>. = @\.>>>.                       = 0.6
+  @\+  = @\-                                      = 0.7
+  @\*  = @\/  = @\%                               = 0.8
 
 TAB = ' ' * 2
 

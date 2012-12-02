@@ -10,7 +10,7 @@ tint = (text, color ? green) -> color + text + reset
 
 # Run our node/livescript interpreter.
 run = (args) ->
-  proc = spawn \node [\bin/livescript] +++ args
+  proc = spawn \node [\bin/livescript] ++ args
   proc.stderr.on \data say
   proc       .on \exit -> process.exit it if it
 
@@ -38,7 +38,10 @@ task \build 'build lib/ from src/' ->
   ext = /\.ls$/
   sources = for file in dir \src
     \src/ + file if ext.test file
-  run [\-bco \lib] +++ sources
+  run [\-bco \lib] ++ sources
+
+task \clean 'clean lib/ to start with good compiler' ->
+  shell 'git checkout -- lib/'
 
 task \clean 'clean lib/ to start with good compiler' ->
   shell 'git checkout -- lib/'
