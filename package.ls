@@ -1,5 +1,5 @@
 name    : \dslivescript
-version : \1.1.0-DS
+version : \1.1.1-DS
 
 description : 'LiveScript is a language which compiles to JavaScript. It has a straightforward mapping to JavaScript and allows you to write expressive code devoid of repetitive boilerplate. While LiveScript adds many features to assist in functional style programming, it also has many improvements for object oriented and imperative programming. DS LiveScript adds eventing operations, making observers first-class objects in the language.'
 
@@ -26,7 +26,19 @@ files       :
   \bin
   \README.md
   \LICENSE
-main: \./lib/livescript
+
+main : \./lib/livescript
+bin  :
+  livescript: \./bin/livescript
+  lsc: \./bin/lsc
+  slake: \./bin/slake
+
+scripts:
+  pretest: "bin/slake build && bin/slake build:parser && bin/slake build"
+  test: "bin/slake test"
+  posttest: "git checkout -- lib"
+
+preferGlobal: true
 
 repository: type: \git, url: \git://github.com/DavidSouther/LiveScript.git
 

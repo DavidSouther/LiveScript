@@ -100,7 +100,7 @@ eq 4 obj.b
 
 r = {[key, val] for key, val of {a:1, b:2} when val isnt 2}
 eq 1 r.a
-ok r.b!?
+ok not r.b?
 
 
 # Basic range comprehensions.
@@ -199,12 +199,72 @@ eq 6 obs.length
 eq 0 obs.0.one
 eq 6 obs[*-1].two
 
+# Comprehensions returned
+
+xs = do -> [[x for x to 1] for y to 1]
+eq 2 xs.length
+eq 2 xs.1.length
+
+ys = let
+  for y to 1
+    for x to 1
+      x
+eq 2 ys.length
+eq 2 ys.1.length
+
+zs = do -> [x + y for x to 1 for y to 1]
+eq 4 zs.length
+eq '0,1,1,2' String zs
+
+# Comprehensions with cascade
+eq '3,4,5' String [.. + 2 for [1 2 3]]
+eq '3,5'   String [.. + 2 for [1 2 3] when .. % 2 isnt 0]
+eq '5,4,3' String [.. + 2 for [1 2 3] by -1]
+eq '5,3'   String [.. + 2 for [1 2 3] by -1 when .. % 2 isnt 0]
+
+list-of-obj =
+  * ha: 1
+    mo: 8
+  * ha: 4
+    la: 2
+
+eq '1,4' String [..ha for list-of-obj]
+
+ys = [\A to \D] ++ [\H to \K] ++ [\Z]
+eq 'A,B,C,D,H,I,J,K,Z' String [.. for [\A to \Z] when .. in ys]
 
 # Comprehensions in loops
 xs = for x to 5
   [x + y for y to 5]
 eq 6 xs.length
 eq 10 xs[*-1][*-1]
+
+xs = for x to 5
+  if x % 2 is 0
+    [x + y for y to 2]
+  else
+    [x + y for y to 5]
+eq 6 xs.length
+eq 6 xs[*-2][*-1]
+eq 10 xs[*-1][*-1]
+
+xs = for x to 5
+  if x % 2 is 0
+    w = [x + y for y to 2]
+    w
+  else
+    v = [x + y for y to 5]
+    v
+eq 6 xs.length
+eq 6 xs[*-2][*-1]
+eq 10 xs[*-1][*-1]
+
+xs = for x to 1
+  [y] = [z for z from 1 to 2]
+  y
+eq 2 xs.length
+eq 1 xs.0
+eq 1 xs.1
 
 
 # Multiline comprehensions
@@ -331,6 +391,14 @@ eq o.i, 2
 
 for, o.count!_ of [1 2] then continue
 eq o.i, 4
+
+
+# [#195](https://github.com/satyr/coco/issues/195)
+for [0]
+  ok 0 of {0}
+  for [1] then ok 1 in [1]
+  for [2] =>   ok 2 in [2]
+  ok 3 not of []
 
 
 ### Line folding before/after `for` prepositions

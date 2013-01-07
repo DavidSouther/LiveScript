@@ -18,8 +18,7 @@ eq 32,
 if  false
 or  true
 and null
-?   false
-!?  true
+?   true
   eq 3 1
      .&. 2
      .|. 3
@@ -60,14 +59,6 @@ ok a isnt b
 ok true is     true
 ok true is not false
 ok true isnt false
-
-
-# (In)existence
-let a = void
-  eq a?, false
-  eq a!? true
-
-(ok !? ok) true
 
 
 # `and`/`or` closes implicit calls,
@@ -127,12 +118,9 @@ one  &&= 'one'
 eq zero, 0
 eq one , 'one'
 
-n = m = null
 n  ?= void
 n  ?= true
-m !?= true
 eq n, true
-eq m, null
 
 
 # does not work in REPL if not on first line
@@ -622,6 +610,10 @@ ok (instanceof) (new String \h), String
 ok (instanceof String) (new String \h)
 ok ((new String \h) instanceof) String
 
+ok not (not instanceof) (new String \h), String
+ok not (not instanceof String) (new String \h)
+ok not ((new String \h) not instanceof) String
+
 ok (in) 5 [1 to 10]
 ok (in [1 to 5]) 3
 ok (3 in) [1 to 5]
@@ -649,7 +641,7 @@ eq 2 obj2.b
 withObj2 = (with obj2)
 obj3 = withObj2 d: 6
 
-ok obj2.d!?
+ok not obj2.d?
 eq 6 obj3.d
 eq 9 obj3.a
 
@@ -729,7 +721,7 @@ eq 19      personC.age
 eq \blonde personC.hair
 eq \matias personA.name
 eq 20      personA.age
-ok personA.hair!?
+ok not personA.hair?
 
 
 ### xor
@@ -852,35 +844,3 @@ ok not (even or 1) 3
 ok ((.length > 4) or [1 2 3]) [1 2 3]
 
 eq 8 ((-> &0 + &1 is 5) and (**)) 2 3
-
-
-### Cascade
-a = with [2 7 1 8 2]
-  ..push 3
-  ..sort!
-    ..shift!
-  ..pop!
-.join ''
-eq \2237 a
-
-ok
-  .. .., ..
-  (->) ..(.., ..)
-  ..value-of! <| ok
-
-# single line
-eq '2,3,4,5' String [2 5 1 6 3]..push(4)..sort!..shift!..pop!
-eq '2,3,4,5' String([2 5 1 6 3]..push 4 ..sort!..shift!..pop!)
-
-# combined
-b = with [2 7 1 8 2]..push 9
-  ..push 3
-  ..sort!
-    ..shift!
-  ..pop!
-.join ''
-eq \22378 b
-
-# errors
-compileThrows 'stray reference' 2 '\n..'
-compileThrows 'unreferred cascadee' 1 'a\n b'

@@ -17,9 +17,11 @@ thirdCtor = -> @array = [1, 2, 3]
 class ThirdChild extends SecondChild
   -> thirdCtor ...
 
-  func: ->
+  name = -> 'func'
+
+  # `super` from a dynamically named method and an inner function.
+  (name!): ->
     let it
-      # `super` from inner function
       super('three/') + it
 
 eq (new ThirdChild).func('four'), 'zero/one/two/three/four'
@@ -147,7 +149,11 @@ class BoundCtor extends (-> {@attr})
     eq super(...).attr, @attr
     @method = ~> this
 
-class BoundChild extends BoundCtor then ~> super ...
+class BoundChild extends BoundCtor
+  ~>
+    super ...
+    # Auto-`return this` even with backcall.
+    <- Object
 
 for C in [BoundCtor, BoundChild]
   bc = C 'attr'
@@ -205,7 +211,7 @@ eq \declared (class declared)displayName
 ok declared?
 
 eq \named  (new -> return @named = class)displayName
-ok named!? 'should not leak to global when undeclared'
+ok not named? 'should not leak to global when undeclared'
 
 
 # `super` with nested classes
@@ -445,3 +451,18 @@ class A
     a: b
 
 eq 2 (new A).a
+
+# complex extends and auto super
+x =
+  A: class
+    -> @y = \ha
+
+class B extends x.A
+  y: \no
+
+eq \ha (new B).y
+
+class C extends NON-EXISTANT ? (->)
+  y: 4
+
+eq 4 (new C).y

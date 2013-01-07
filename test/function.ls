@@ -347,6 +347,10 @@ eq 0, I(-> it()) -> 0
 eq void Function() ->
 
 
+# Ignore trailing placeholder parameters.
+eq 0 ((,,...,,...,,) -> it)length
+
+
 ### Invalid call detection
 compileThrows 'invalid callee'      1 '[]()'
 compileThrows 'invalid constructor' 1 'new 42'
@@ -383,6 +387,13 @@ eq 3 do
   3
 
 eq 6 (a <- g 6; a)
+
+# [#192](https://github.com/satyr/coco/issues/192)
+eq '192' do
+  <- '081'replace /./g
+  -~it
+  /* ignore trailing */
+  /* block comments */
 
 
 addArr = do 
@@ -484,34 +495,6 @@ ok let [it] = [ok]
 
 let this = eq
   this eq, this
-
-
-### `where`
-eq 5 x + y where x = 2, y = 3
-
-eq 5 x + y where x = 2,
-                 y = 3
-
-r = x + y where
-  x = 2
-  y = 3
-eq 5 r
-
-r = x + y
-  where
-    x = 2
-    y = 3
-eq 5 r
-
-r = x + y
-  where x = 2,
-        y = 3
-eq 5 r
-
-r = x + y
-  where x = 2,
-        y = x + 1
-eq 5 r
 
 
 ### `&`
@@ -664,6 +647,13 @@ eq 6 f 2
 
 eq 9 (6 |> obj.three-add 1, _, 2)
 
+# preserve context of partially applied function
+obj =
+    offset: 5
+    add: (x, y) -> @offset + x + y
+
+eq 16 (10 |> obj.add _, 1)
+
 # do a named func
 do ->
   i = 0
@@ -675,4 +665,54 @@ do ->
     x
   eq 2 i
 
+# bound and curried
+class A
+  (@list = \middle) ->
+
+  enclose: (head, tail) ~~>
+    [head, @list, tail].join!
+
+  enclose-not-bound: (head, tail) -->
+    [head, @list, tail].join!
+
+a = new A
+
+fn = a.enclose \head
+curried = fn \tail
+eq 'head,middle,tail' curried
+
+# not bound
+obj =
+  list: \haha
+  fn: a.enclose-not-bound \head
+  fn2: a.enclose-not-bound
+eq 'head,haha,tail' obj.fn \tail
+obj.fn3 = obj.fn2 \h
+eq 'h,haha,t' obj.fn3 \t
+
+# unary ops in parameters
+f = (!x) -> x
+ok f false
+
+g = (+x) -> x
+eq 1 g '1'
+
+h = (^^x) -> x <<< a: 9, c: 6
+obj = a: 1, b: 2
+obj2 = h obj
+eq 9 obj2.a
+eq 6 obj2.c
+eq 1 obj.a # original obj hasn't been modified
+ok not obj.c
+
+k = (!!x) -> x
+eq true k 1
+
+l = (!!@x) -> x
+obj = {-x}
+l.call obj, 'hello'
+eq true obj.x
+
+
+## util funcs
 function map f, xs then [f x for x in xs]

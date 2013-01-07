@@ -204,12 +204,11 @@ new
   eq x.3, \3
   eq x.4, true
   eq x.5, false
-  c = null; d = 0; y = {a || 1, @b && 2, c ? 3, d !? 4}
+  c = null; d = 0; y = {a || 1, @b && 2, c ? 3}
   eq y.a, 1
   eq y.b, 2
   eq y.c, 3
-  eq y.d, 4
-  z = {true, false, on, off, yes, no, null, void, undefined, this, arguments, eval, -super, +debugger}
+  z = {true, false, on, off, yes, no, null, void, this, arguments, eval, -super, +debugger}
   eq z.true      , true
   eq z.false     , false
   eq z.on        , on
@@ -218,7 +217,6 @@ new
   eq z.no        , no
   eq z.null      , null
   eq z.void      , void
-  eq z.undefined , undefined
   eq z.this      , this
   eq z.arguments , arguments
   eq z.eval      , eval
@@ -398,7 +396,6 @@ eq ok, obj.key
 
 ### `void`
 eq void, [][0]
-eq undefined, [][0]
 eq void+'', 'undefined'
 
 eq [,,].length, 2
@@ -452,3 +449,41 @@ compileThrows 'bad string in range' 2 '\n["a" to "bc"]'
 
 ### yadayadayada
 throws \unimplemented -> ...
+
+
+### Cascade
+a = with [2 7 1 8 2]
+  ..push 3
+  ..sort!
+    ..shift!
+  ..pop!
+.join ''
+eq \2237 a
+
+ok
+  .. .., ..
+  (->) ..(.., ..)
+  ..value-of! <| ok
+
+# single line
+eq '2,3,4,5' String [2 5 1 6 3]..push(4)..sort!..shift!..pop!
+eq '2,3,4,5' String([2 5 1 6 3]..push 4 ..sort!..shift!..pop!)
+
+# combined
+b = with [2 7 1 8 2]..push 9
+  ..push 3
+  ..sort!
+    ..shift!
+  ..pop!
+.join ''
+eq \22378 b
+
+# quick map
+eq \2718,
+  for [1 6 0 7]
+    .. + 1
+  .join ''
+
+# errors
+compileThrows 'stray reference' 2 '\n..'
+compileThrows 'unreferred cascadee' 1 'a\n b'

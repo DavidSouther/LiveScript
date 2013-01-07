@@ -114,21 +114,24 @@ exports import
     {last} = this
     # `id:_` `_.id` `@id`
     if regex-match.2 or last.0 is \DOT or @adi!
-      @token \ID if id in KEYWORDS then Object(id) <<< {+reserved} else id
+      @token \ID if id in JS_KEYWORDS then Object(id) <<< {+reserved} else id
       @token \: \: if regex-match.2
       return input.length
     # keywords
     switch id
     case <[ true false on off yes no null void undefined arguments debugger ]>
+      if id is \undefined
+        console?warn "WARNING on line #{@line}: `undefined` as an alias to `void` is deprecated and will be removed in a future LiveScript release. Please use `void` instead."
       tag = \LITERAL
     case \new \do \typeof \delete                      then tag = \UNARY
     case \return \throw                                then tag = \HURL
     case \break  \continue                             then tag = \JUMP
     case \this \eval \super then return @token(\LITERAL id, true)length
-    case \for  then @seenFor = true; fallthrough
-    case \then then @wantBy  = false
+    case \for  then @seenFor = true; @wantBy = false
+    case \then then @seenFor = @wantBy = false
     case \catch \function then id = ''
-    case \where then
+    case \where
+      console?warn "WARNING on line #{@line}: the `where` statement is deprecated and will be removed in a future LiveScript release. Please use `let` or local variables instead."
     case \in \of
       if @seenFor
         @seenFor = false
@@ -238,11 +241,18 @@ exports import
       return regex-match.4.length
     if radix = regex-match.1
       num = parseInt rnum = regex-match.2.replace(NUMBER_OMIT, ''), radix
+      bound = false
       if radix > 36 or radix < 2
-        @carp "invalid number base #radix (with number #rnum), 
-               base must be from 2 to 36"
+        if rnum is /[0-9]/
+          @carp "invalid number base #radix (with number #rnum),
+                 base must be from 2 to 36"
+        else
+          bound = true
       if isNaN num or num is parseInt rnum.slice(0 -1), radix
-        @carp "invalid number #rnum in base #radix"
+        @strnum regex-match.1
+        @token \DOT \.~
+        @token \ID regex-match.2
+        return input.length
       num += ''
     else
       num = (regex-match.3 or input)replace NUMBER_OMIT, ''
@@ -385,7 +395,7 @@ exports import
                    IN OF TO BY FROM EXTENDS IMPLEMENTS ]>
         return length
       if delta then @indent delta else @newline!
-    @wantBy = false
+    @seenFor = @wantBy = false
     length
 
   # Consumes non-newline whitespaces and/or a line comment.
@@ -395,6 +405,7 @@ exports import
 
   # Used from both doLiteral (|) and doID (case): adds swtich if required
   doCase: ->
+    @seenFor = false
     if @last.0 in <[ ASSIGN -> : ]>
     or (@last.0 is \INDENT and @tokens[*-2].0 in <[ ASSIGN -> : ]>)
       @token \SWITCH \switch
@@ -409,7 +420,6 @@ exports import
   doLiteral: (code, index) ->
     return 0 unless sym = (SYMBOL <<< lastIndex: index)exec(code)0
     switch tag = val = sym
-    case \=>             then tag = \THEN; @unline!
     case \|
       tag = \CASE
       return sym.length if @doCase!
@@ -423,9 +433,13 @@ exports import
     case \^^             then tag = \CLONE
     case \** \^          then tag = \POWER
     case \?  \!?
-      if   @last.0 is \(
-      then create-it-func!
-      else tag = \LOGIC if @last.spaced
+      if @last.0 is \(
+        @token \PARAM( \(
+        @token \)PARAM \)
+        @token \->     \->
+        @token \ID     \it
+      else
+        tag = \LOGIC if @last.spaced
     case \/ \% \%%       then tag = \MATH
     case \+++
       console?warn "WARNING on line #{ @line }: the `+++` concat operator is deprecated and will be removed in a future LiveScript release. Please use a spaced `++` for concatenation instead."
@@ -589,24 +603,24 @@ exports import
       @adi!
       val = \prototype
       tag = \ID
+    case \=>
+      @unline!
+      @seenFor = false
+      tag = \THEN
     default switch val.charAt 0
     case \( then @token \CALL( \(; tag = \)CALL; val = \)
     case \<
       @carp 'unterminated words' if val.length < 4
       @token \WORDS, val.slice(2, -2), @adi!
       return val.length
-    if tag in <[ +- COMPARE LOGIC MATH POWER SHIFT BITWISE CONCAT 
+    if tag in <[ +- COMPARE LOGIC MATH POWER SHIFT BITWISE CONCAT
                  COMPOSE RELATION PIPE BACKPIPE IMPORT ]> and @last.0 is \(
       tag = if tag is \BACKPIPE then \BIOPBP else \BIOP
-    @unline! if tag in <[ , CASE PIPE BACKPIPE DOT LOGIC COMPARE 
+    @unline! if tag in <[ , CASE PIPE BACKPIPE DOT LOGIC COMPARE
                           MATH POWER IMPORT SHIFT BITWISE ]>
-    ~function create-it-func
-      @token \PARAM( \(
-      @token \)PARAM \)
-      @token \->     \->
-      @token \ID     \it
     @token tag, val
     sym.length
+
 
   #### Token Manipulators
 
@@ -852,12 +866,12 @@ function lchomp then it.slice 1 + it.lastIndexOf \\n 0
 
 function decode val, lno
   return [+val] unless isNaN val
-  val = if val.length > 8 then \ng else do Function \return + val
+  val = if val.length > 8 then \ng else do Function 'return ' + val
   val.length is 1 or carp 'bad string in range' lno
   [val.charCodeAt!, true]
 
 function uxxxx then \"\\u + (\000 + it.toString 16)slice(-4) + \"
-character = if JSON!? then uxxxx else ->
+character = if not JSON? then uxxxx else ->
   switch it | 0x2028 0x2029 => uxxxx it
   default JSON.stringify String.fromCharCode it
 
@@ -876,6 +890,10 @@ character = if JSON!? then uxxxx else ->
   while token = tokens[++i]
     [tag, val, line] = token
     switch
+    case tag is \!? or tag is \LOGIC and val is \!?
+      console?warn "WARNING on line #line: the `!?` inexistance operator is deprecated and will be removed in a future LiveScript release. Please use a negated existance instead, eg. change `x!?` to `not x?`. For its use as a logic operator, change `x !? y` to `if x? then y else void`."
+    case tag is \ASSIGN and prev.1 in LS_KEYWORDS and tokens[i-2].0 isnt \DOT
+      carp "cannot assign to reserved word \"#{prev.1}\"" line
     case tag is \DOT and prev.0 is \] and tokens[i-2].0 is \[ and tokens[i-3].0 is \DOT
       tokens.splice i-2, 3
       tokens[i-3].1 = '[]'
@@ -1090,6 +1108,7 @@ character = if JSON!? then uxxxx else ->
 # - Insert `, ` after each non-callable token facing an argument token.
 !function expandLiterals tokens
   i = 0
+  var fromNum
   while token = tokens[++i]
     switch token.0
     case \STRNUM
@@ -1097,19 +1116,35 @@ character = if JSON!? then uxxxx else ->
         token.1.=slice 1
         tokens.splice i++ 0 [\+- sig, token.2]
       continue if token.callable
+    case \TO \TIL
+      unless tokens[i-1]0 is \[
+      and ((tokens[i+2]0 is \]
+        and (tokens[i+1]1.charAt(0) in [\' \"]
+          or +tokens[i+1]1 >= 0))
+        or (tokens[i+2]0 is \BY
+        and tokens[i+3]?0 is \STRNUM
+        and tokens[i+4]?0 is \]))
+        continue
+      
+      if tokens[i+2]0 is \BY
+        tokens[i+2]0 = \RANGE_BY
+      token.op = token.1
+      fromNum = 0
+      fallthrough
     case \RANGE
       lno = token.2
-      if   tokens[i-1]0 is \[
+      if   fromNum? or (tokens[i-1]0 is \[
       and  tokens[i+1]0 is \STRNUM
       and ((tokens[i+2]0 is \]
         and (tokens[i+1]1.charAt(0) in [\' \"]
           or +tokens[i+1]1 >= 0))
         or  (tokens[i+2]0 is \RANGE_BY
         and  tokens[i+3]?0 is \STRNUM
-        and  tokens[i+4]?0 is \]))
-        [fromNum, char] = decode token.1, lno
+        and  tokens[i+4]?0 is \])))
+        unless fromNum?
+          [fromNum, char] = decode token.1, lno
         [toNum, tochar] = decode tokens[i+1].1, lno
-        carp 'bad "to" in range' lno if toNum!? or char .^. tochar
+        carp 'bad "to" in range' lno if not toNum? or char .^. tochar
         byNum = 1
         if byp = tokens[i+2]?0 is \RANGE_BY
           carp 'bad "by" in range' tokens[i+2]2 unless byNum = +tokens[i+3]?1
@@ -1132,6 +1167,7 @@ character = if JSON!? then uxxxx else ->
         if tokens[i+2]?0 is \RANGE_BY
           tokens.splice i+2, 1, [\BY \by lno]
         tokens.splice i+1, 0, [\TO, token.op, lno]
+      fromNum = null
     case \WORDS
       ts = [[\[ \[ lno = token.2]]
       for word in token.1.match /\S+/g or ''
@@ -1193,7 +1229,9 @@ KEYWORDS_SHARED = <[
 KEYWORDS_UNUSED =
   <[ enum interface package private protected public static yield ]>
 
-KEYWORDS = KEYWORDS_SHARED ++ KEYWORDS_UNUSED
+JS_KEYWORDS = KEYWORDS_SHARED ++ KEYWORDS_UNUSED
+
+LS_KEYWORDS = <[ xor match where ]>
 
 ##### Regexes
 # Some of these are given `g` flag and made sure to match empty string

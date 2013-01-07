@@ -10,7 +10,7 @@ tint = (text, color ? green) -> color + text + reset
 
 # Run our node/livescript interpreter.
 run = (args) ->
-  proc = spawn \node [\bin/livescript] ++ args
+  proc = spawn \node [\lib/command] ++ args
   proc.stderr.on \data say
   proc       .on \exit -> process.exit it if it
 
@@ -145,6 +145,8 @@ function runTests global.LiveScript
     say if failedTests
     then tint "failed #failedTests and #message" red
     else tint message
+    if failedTests
+      process.exit 1
   dir(\test)forEach (file) ->
     return unless /\.ls$/i.test file
     code = slurp filename = path.join \test file

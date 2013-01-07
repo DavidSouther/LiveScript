@@ -150,8 +150,7 @@
   invert: -> Unary \! this, true
 
   invertCheck: ->
-    if it.inverted then @invert!
-    this
+    if it.inverted then @invert! else this
 
   addElse: (@else) -> this
 
@@ -164,7 +163,7 @@
       base = this.lines.0
       base.=then.lines.0 if this.lines.0 instanceof If
       items = base.items
-      if items.0!? or items.1!?
+      if not items.0? or not items.1?
         @carp 'must specify both key and value for object comprehension'
       Assign (Chain Var arref).add(Index items.0, \., true), items.1
     else Return this
@@ -262,6 +261,7 @@ class exports.Block extends Node
   # **Block** does not return its entire body, rather it
   # ensures that the final line is returned.
   makeReturn: ->
+    @chomp!
     if @lines[*-1]?=makeReturn it
       --@lines.length if that instanceof Return and not that.it
     this
@@ -305,7 +305,7 @@ class exports.Block extends Node
 
   # Compile to a comma-separated list of expressions.
   compileExpressions: (o, level) ->
-    {lines} = this; i = -1
+    {lines} = @chomp!; i = -1
     while lines[++i] then lines.splice i-- 1 if that.comment
     lines.push Literal \void unless lines.length
     lines.0 <<< {@front}; lines[*-1] <<< {@void}
@@ -447,6 +447,16 @@ class exports.Chain extends Node
   children: <[ head tails ]>
 
   add: ->
+    if @tails.length
+      last = @tails[*-1]
+      # optimize `x |> f 1, _` to `f(1, x)`
+      if last instanceof Call
+      and last.partialized?length is 1
+      and it.args.length is 1
+        index = last.partialized.0.head.value # Chain Literal i
+        delete last.partialized
+        last.args[index] = it.args.0 # extract the single arg from pipe call
+        return this
     if @head instanceof Existence
       {@head, @tails} = Chain @head.it
       it.soak = true
@@ -574,8 +584,10 @@ class exports.Chain extends Node
         else pre .push t
       [partial, ...post] = rest if rest?
       @tails = pre
+      context = if pre.length then Chain head, pre[til -1] else Literal \this
       return (Chain (Chain Var util \partialize
-        .add Call [this; Arr partial.args; Arr partial.partialized]), post).compile o
+        .add Index Key \apply
+        .add Call [context, Arr [this; Arr partial.args; Arr partial.partialized]]), post).compile o
     @carp 'invalid callee' if tails.0 instanceof Call and not head.isCallable!
     @expandSlice o; @expandBind o; @expandSplat o; @expandStar o
     if @splatted-new-args
@@ -955,7 +967,7 @@ class exports.Unary extends Node
 
   show: -> [\@ if @post] + @op
 
-  isCallable: -> @op in <[ do new delete ]> or @it!?
+  isCallable: -> @op in <[ do new delete ]> or not @it?
 
   isArray: -> @it instanceof Arr   and @it.items.length
            or @it instanceof Chain and @it.isArray!
@@ -981,7 +993,7 @@ class exports.Unary extends Node
   function crement then {'++':\in '--':\de}[it] + \crement
 
   compileNode: (o) ->
-    return @compileAsFunc o if @it!?
+    return @compileAsFunc o if not @it?
     return that if @compileSpread o
     {op, it} = this
     switch op
@@ -1054,7 +1066,7 @@ class exports.Binary extends Node
       op = | logic    => that
            | op is \= => \?
            | _        => \=
-    @partial = first!? or second!?
+    @partial = not first? or not second?
     if not @partial
       if \= is op.charAt op.length-1 and op.charAt(op.length-2) not in <[ = < > ! ]>
         return Assign first.unwrap!, second, op
@@ -1248,7 +1260,7 @@ class exports.Binary extends Node
   compilePartial: (o) ->
     vit = Var \it
     switch
-    case  @first!? and @second!?
+    case  not @first? and not @second?
       x = Var \x$; y = Var \y$
       (Fun [x, y], Block((Binary @op, x, y).invertCheck this), false, true).compile o
     case @first?
@@ -1354,7 +1366,7 @@ class exports.Assign extends Node
       else if dot-split.length > 1
         right.in-class-static = dot-split[til -1].join ''
     code = if not o.level and right instanceof While and not right.else and
-              (lvar or left.isSimpleAccess!)
+              (lvar or left instanceof Chain and left.isSimpleAccess!)
       # Optimize `a = while ...`.
       empty = if right.objComp then '{}' else '[]'
       """#{ res = o.scope.temporary \res } = #empty;
@@ -1617,7 +1629,7 @@ class exports.Fun extends Node
     if @bound is \this$
       if @ctor
         scope.assign \this$ 'this instanceof ctor$ ? this : new ctor$'
-        body.add Return Literal \this$
+        body.lines.push Return Literal \this$
       else if sscope.fun?bound
       then @bound = that
       else sscope.assign \this$ \this
@@ -1633,10 +1645,13 @@ class exports.Fun extends Node
     code += "\n#that\n#tab" if body.compileWithDeclarations o
     code += \}
     curry-code-check = ~>
-      if @curried
-        if @hasSplats
+      if @curried and @has-splats
           @carp 'cannot curry a function with a variable number of arguments'
-        "#{ util \curry }(#code)"
+      if @curried and @params.length > 1
+        "#{ util \curry }" + if @bound or @class-bound
+          "((#code), true)"
+        else
+          "(#code)"
       else code
     if inLoop then return pscope.assign pscope.temporary(\fn), curry-code-check!
     if @returns
@@ -1647,20 +1662,27 @@ class exports.Fun extends Node
     if @front and not @statement then "(#code)" else code
 
   compileParams: (scope) ->
-    {params, body} = this; names = []; assigns = []
+    {{length}:params, body} = this
+    # Remove trailing placeholders.
+    for p in params by -1
+      break unless p.isEmpty! or p.filler
+      --params.length
     for p, i in params
-      if p instanceof Splat then splace = i; @hasSplats = true
+      if p instanceof Splat
+        @has-splats = true
+        splace = i
       # `(a = x) ->` => `(a ? x) ->`
       else if p.op is \=
         params[i] = Binary (p.logic or \?), p.left, p.right
     # `(a, ...b, c) ->` => `(a) -> [[] ...b, c] = @@`
     if splace?
       rest = params.splice splace, 9e9
-      rest = 0 if not rest.1 and rest.0.it.isEmpty!  # ignore trailing `...`
     else if @accessor
       that.carp 'excess accessor parameter' if params.1
-    else unless params.length or @wrapper
+    else unless length or @wrapper
       params.0 = Var \it if body.traverseChildren -> it.value is \it or null
+    names   = []
+    assigns = []
     if params.length
       dic = {}
       for p in params
@@ -1669,14 +1691,21 @@ class exports.Fun extends Node
         if vr.isEmpty!
           vr = Var scope.temporary \arg
         else if vr not instanceof Var
+          unaries = []
+          while vr instanceof Unary
+            has-unary = true
+            unaries.push vr
+            vr.=it
           v = Var delete (vr.it || vr)name || vr.varName! ||
                   scope.temporary \arg
-          assigns.push Assign vr, if df then Binary p.op, v, p.second else v
+          assigns.push Assign vr, switch
+            | df        => Binary p.op, v, p.second
+            | has-unary => fold ((x, y) -> y.it = x; y), v, unaries.reverse!
+            | otherwise => v
           vr = v
         else if df
           assigns.push Assign vr, p.second, \=, p.op, true
-        names.push name = scope.add vr.value, \arg, p
-        p.carp "duplicate parameter \"#name\"" unless dic"#name." .^.= 1
+        names.push scope.add vr.value, \arg, p
     if rest
       while splace-- then rest.unshift Arr!
       assigns.push Assign Arr(rest), Literal \arguments
@@ -1706,21 +1735,26 @@ class exports.Class extends Node
       j = 0
       while j < node.items.length, j++
         prop = node.items[j]
-        if prop.key instanceof [Key, Literal]
-          if (prop.key instanceof Key and prop.key.name is ctor-name)
-          or (prop.key instanceof Literal and prop.key.value is "'#ctor-name'")
-            node.carp 'redundant constructor' if ctor
-            ctor := prop.val
-            node.items.splice j--, 1
-            ctor-place := i
-          else if prop.val instanceof Fun
-            prop.val.meth = prop.key
-            if prop.val.bound
-              bound-funcs.push prop.key
-              prop.val.bound = false
-          else if prop.accessor
-            for f in prop.val then f.meth = prop.key
+        key = prop.key
+        if (key instanceof Key and key.name is ctor-name)
+        or (key instanceof Literal and key.value is "'#ctor-name'")
+          node.carp 'redundant constructor' if ctor
+          ctor := prop.val
+          node.items.splice j--, 1
+          ctor-place := i
+        continue unless prop.val instanceof Fun or prop.accessor
+        if key.isComplex!
+          key = Var o.scope.temporary \key
+          prop.key = Assign key, prop.key
+        if prop.val.bound
+          bound-funcs.push prop.key
+          prop.val.bound = false
+          # need to know whether bound param of curry$ should be true
+          prop.val.class-bound = true
+        for v in [] ++ prop.val
+          v.meth = key
       if node.items.length then Import proto, node else Literal 'void'
+
     for node, i in lines
       if node instanceof Obj
         lines[i] = import-proto-obj node, i
@@ -1737,7 +1771,7 @@ class exports.Class extends Node
               it.lines[k] = import-proto-obj child, i
         ), true
 
-    ctor ||= lines.* = if @sup and @sup instanceof [Fun, Var]
+    ctor ||= lines.* = if @sup
                     then  Fun [] Block Chain(new Super).add Call [Splat Literal \arguments]
                     else Fun!
     unless ctor instanceof Fun
@@ -1944,6 +1978,7 @@ class exports.While extends Node
   addObjComp: (@objComp = true) -> this
 
   makeReturn: ->
+    return this if @has-returned
     if it
       if @objComp
         @body = Block @body.makeObjReturn it
@@ -1955,6 +1990,7 @@ class exports.While extends Node
         if (@is-comprehension or @in-comprehension) and not last?is-comprehension
           @body.makeReturn it
           @else?makeReturn it
+          @has-returned = true
         else
           @res-var = it
           @else?makeReturn it
@@ -1984,7 +2020,8 @@ class exports.While extends Node
     last = lines?[*-1]
     unless (@is-comprehension or @in-comprehension) and not last?is-comprehension
       var has-loop
-      @traverseChildren !-> if it instanceof While then has-loop := true
+      @traverseChildren !-> if it instanceof Block and it.lines[*-1] instanceof While
+        has-loop := true
       if @returns and not @res-var
         @res-var = res = o.scope.assign \results$ empty
       if @res-var and (last instanceof While or has-loop)
@@ -2051,6 +2088,7 @@ class exports.For extends While
         then "#idx #{ '<>'charAt pvar < 0 }#eq #tvar"
         else "#pvar < 0 ? #idx >#eq #tvar : #idx <#eq #tvar"
     else
+      @item = Var o.scope.temporary \x if @ref
       if @item or @object and @own
         [svar, srcPart] = @source.compileLoopReference o, \ref, not @object
         svar is srcPart or temps.push svar
@@ -2088,6 +2126,7 @@ class exports.For extends While
     if @item and not @item.isEmpty!
       head += \\n + o.indent +
         Assign(@item, JS "#svar[#idx]")compile(o, LEVEL_TOP) + \;
+    o.ref = @item.value if @ref
     body  = @compileBody o
     head += \\n + @tab if (@item or (@index and not @object)) and \} is body.charAt 0
     head + body
@@ -2167,7 +2206,7 @@ class exports.Switch extends Node
 
   isCallable: ->
     for c in @cases when not c.isCallable! then return false
-    @default?isCallable!
+    if @default then @default.isCallable! else true
 
   getJump: (ctx or {}) ->
     ctx.break = true
@@ -2321,35 +2360,37 @@ class exports.Label extends Node
 
 #### Cascade
 class exports.Cascade extends Node
-  (@input, @output, @implicit) ->
+  (@input, @output, @prog1) ~>
+
+  show: -> @prog1
 
   children: <[ input output ]>
 
   terminator: ''
 
-  ::delegate <[ isCallable isArray isString isRegex ]> -> @output[it]!
+  ::delegate <[ isCallable isArray isString isRegex ]> ->
+    @[if @prog1 then \input else \output][it]!
 
   getJump: -> @output.getJump it
 
   makeReturn: (@ret) -> this
 
   compileNode: ({level}:o) ->
-    {input, output, ref} = this
-    if \ret of this or level and not @void
-      output.add (Literal \..) <<< cascadee: true
+    {input, output, prog1, ref} = this
+    if prog1 and (\ret of this or level and not @void)
+      output.add (Literal(\..) <<< {+cascadee})
     if \ret of this
       output.=makeReturn @ret
     if ref
-    then output = Assign Arr!, output
-    else @temps = [ref = o.scope.temporary \x]
+    then prog1 or output = Assign Var(ref), output
+    else ref = o.scope.temporary \x
     if input instanceof Cascade
     then input <<< {ref}
-    else input = Assign JS(ref), input
+    else input &&= Assign Var(ref), input
     o.level &&= LEVEL_PAREN
     code = input.compile o
-    o.ref = new String ref
-    out = Block output .compile o
-    @carp "unreferred cascadee" if @implicit and not o.ref.erred
+    out  = Block output .compile o <<< ref: new String ref
+    @carp "unreferred cascadee" if prog1 is \cascade and not o.ref.erred
     return "#code#{input.terminator}\n#out" unless level
     code += ", #out"
     if level > LEVEL_PAREN then "(#code)" else code
@@ -2391,6 +2432,7 @@ class exports.Require extends Node
         get-value item.head
       | otherwise               => item
     process-item = (item) ->
+      chain := null
       [asg, value] = switch
       | item instanceof Prop    => [get-value item.key; item.val]
       | item instanceof Chain   =>
@@ -2645,12 +2687,18 @@ UTILS =
 
   out: '''typeof exports != 'undefined' && exports || this'''
 
-  curry: '''function(f, args){
-    return f.length > 1 ? function(){
-      var params = args ? args.concat() : [];
-      return params.push.apply(params, arguments) < f.length && arguments.length ?
-        curry$.call(this, f, params) : f.apply(this, params);
-    } : f;
+  curry: '''function(f, bound){
+    var context,
+    _curry = function(args) {
+      return f.length > 1 ? function(){
+        var params = args ? args.concat() : [];
+        context = bound ? context || this : this;
+        return params.push.apply(params, arguments) <
+            f.length && arguments.length ?
+          _curry.call(context, params) : f.apply(context, params);
+      } : f;
+    };
+    return _curry();
   }'''
 
   compose: '''function(fs){
@@ -2666,12 +2714,14 @@ UTILS =
   }'''
 
   partialize: '''function(f, args, where){
+    var context = this;
     return function(){
       var params = slice$.call(arguments), i,
           len = params.length, wlen = where.length,
           ta = args ? args.concat() : [], tw = where ? where.concat() : [];
       for(i = 0; i < len; ++i) { ta[tw[0]] = params[i]; tw.shift(); }
-      return len < wlen && len ? partialize$(f, ta, tw) : f.apply(this, ta);
+      return len < wlen && len ?
+        partialize$.apply(context, [f, ta, tw]) : f.apply(context, ta);
     };
   }'''
   not: '''function(x){ return !x; }'''
@@ -2862,3 +2912,7 @@ function util fn, options
     return fn+\$
 
 function entab code, tab then code.replace /\n/g \\n + tab
+
+function fold f, memo, xs
+  for x in xs then memo = f memo, x
+  memo

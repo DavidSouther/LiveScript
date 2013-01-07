@@ -113,10 +113,6 @@ switch
       throw
     LiveScript.emit \parse t
     t.ast = LiveScript.ast t.tokens
-    if o.prelude
-      t.ast.lines.unshift LiveScript.ast LiveScript.tokens '''if   window?
-          then prelude.installPrelude window
-          else (require 'prelude-ls').installPrelude global'''
     if o.ast
       say if o.json then t.ast.stringify 2 else ''trim.call t.ast
       throw
@@ -124,6 +120,8 @@ switch
     options.bare ||= o.json or o.run
     t.ast.makeReturn! if o.json or o.run and o.print
     t.output = t.ast.compileRoot options
+    if o.prelude
+      t.output = "if (typeof window == 'undefined' || window === null) {\n  require('prelude-ls').installPrelude(global);\n} else {\n  prelude.installPrelude(window);\n}\n#{t.output}"
     if o.json or o.run
       LiveScript.emit \run t
       t.result = LiveScript.run t.output, options, true
@@ -265,7 +263,7 @@ switch
         ops = {\eval, +bare, saveScope:LiveScript}
         ops = {+bare} if code.match(/^\s*!?function/)
         x  = vm.runInNewContext LiveScript.compile(code, ops), repl-ctx, \repl
-        x !? repl-ctx <<< {_:x}
+        repl-ctx <<< {_:x} if x?
         pp  x
         say x if typeof x is \function
     catch then say e
